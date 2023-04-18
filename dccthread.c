@@ -54,4 +54,6 @@ dccthread_t* dccthread_self(void) {
     return ready_threads_list->head->data;
 }
 
-
+const char* dccthread_name(dccthread_t* tid) {
+    return tid->name;
+}
