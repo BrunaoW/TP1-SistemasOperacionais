@@ -8,7 +8,6 @@
 #define TRUE 1
 #define FALSE 0
 
-// TAD info da thread
 typedef struct dccthread
 {
     ucontext_t state;
@@ -28,10 +27,10 @@ void dccthread_init(void (*func)(int), int param) {
     // Inicializa thread gerente
     manager_thread = (dccthread_t*) malloc(sizeof(dccthread_t));
     getcontext(&manager_thread->state);
-    strcpy(manager_thread->name, "thread_gerente");
+    strcpy(manager_thread->name, "manager");
     
     // Inicializa thread principal
-    main_thread = dccthread_create("thread_principal", func, param);
+    main_thread = dccthread_create("main", func, param);
 }
 
 dccthread_t* dccthread_create(const char *name, void (*func)(int), int param) {
@@ -45,3 +44,14 @@ dccthread_t* dccthread_create(const char *name, void (*func)(int), int param) {
 	makecontext(&new_thread->state, (void*) func, 1, param);
     return new_thread;
 }
+
+void dccthread_yield(void) {
+    // pop_left(ready_threads_list)
+    // swap_context
+}
+
+dccthread_t* dccthread_self(void) {
+    return ready_threads_list->head->data;
+}
+
+
