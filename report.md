@@ -1,4 +1,5 @@
 # PAGINADOR DE MEMÓRIA - RELATÓRIO
+___
 
 1. Termo de compromisso
 
@@ -14,10 +15,14 @@ grupo.  Substitua marcadores `XX` pela contribuição de cada membro
 do grupo no desenvolvimento do trabalho (os valores devem somar
 100%).
 
-  * Nome <email@domain> XX%
-  * Nome <email@domain> XX%
+  * Bruno Wilson <brunowilson4@gmail.com> 50%
+  * Gustavo Augusto <email@domain> 50%
 
 3. Referências bibliográficas
+
+  - Funcionamento da biblioteca "ucontext.h" - <https://pubs.opengroup.org/onlinepubs/7908799/xsh/getcontext.html>, <https://pubs.opengroup.org/onlinepubs/7908799/xsh/makecontext.html>; acessado em 18/04/2023
+  - Silberschatz, A. - Fundamentos de Sistemas Operacionais, 9ª edição
+  - Tanenbaum, A. S. - Sistemas Operacionais Modernos, 4ª edição
 
 4. Estruturas de dados
 
