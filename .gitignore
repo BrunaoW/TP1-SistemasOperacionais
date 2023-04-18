@@ -52,5 +52,4 @@ Mkfile.old
 dkms.conf
 
 *.err
-*.out
 *.log
