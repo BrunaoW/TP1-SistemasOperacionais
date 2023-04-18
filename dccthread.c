@@ -1,6 +1,7 @@
 #include <ucontext.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "dccthread.h"
 #include "dlist.h"
@@ -46,8 +47,9 @@ dccthread_t* dccthread_create(const char *name, void (*func)(int), int param) {
 }
 
 void dccthread_yield(void) {
-    // pop_left(ready_threads_list)
-    // swap_context
+    dccthread_t* current_thread = dccthread_self();
+    dlist_push_right(ready_threads_list, current_thread);
+    swapcontext(&current_thread->state, &manager_thread->state);
 }
 
 dccthread_t* dccthread_self(void) {
@@ -56,4 +58,16 @@ dccthread_t* dccthread_self(void) {
 
 const char* dccthread_name(dccthread_t* tid) {
     return tid->name;
+}
+
+void dccthread_exit(void) {
+
+}
+
+void dccthread_wait(dccthread_t *tid) {
+
+}
+
+void dccthread_sleep(struct timespec ts) {
+    
 }
