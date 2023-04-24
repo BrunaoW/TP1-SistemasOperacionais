@@ -1,6 +1,8 @@
 #include <ucontext.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <signal.h>
 #include <string.h>
 
 #include "dccthread.h"
@@ -25,6 +27,34 @@ dccthread_t* main_thread;
 // Lista de threads prontas a serem executadas
 struct dlist* ready_threads_list;
 struct dlist* waiting_threads_list;
+
+// variaveis para controle de preempção
+timer_t timer;
+struct sigevent signal_event;
+struct sigaction signal_action;
+struct itimerspec time_spent;
+
+static void stop_thread(int sig){
+	dccthread_yield();
+}
+
+void init_timer() {
+    signal_action.sa_flags = SA_SIGINFO;
+    signal_action.sa_sigaction = stop_thread;
+    signal_action.sa_handler = stop_thread;
+	sigaction(SIGUSR1, &signal_action, NULL);
+
+    signal_event.sigev_notify = SIGEV_SIGNAL;
+    signal_event.sigev_signo = SIGUSR1;
+	signal_event.sigev_value.sival_ptr = &timer;
+    timer_create(CLOCK_PROCESS_CPUTIME_ID, &signal_event, &timer);
+
+    time_spent.it_value.tv_sec = 0;
+    time_spent.it_interval.tv_sec = 0;
+	time_spent.it_value.tv_nsec = 10000000;
+    time_spent.it_interval.tv_nsec = 10000000;
+    timer_settime(timer, 0, &time_spent, NULL);
+}
 
 bool find_thread_in_list(struct dlist* thread_list, dccthread_t* thread) {
     if (thread_list->count == 0) return FALSE;
@@ -53,6 +83,8 @@ void dccthread_init(void (*func)(int), int param) {
     // Inicializa thread principal
     main_thread = dccthread_create("main", func, param);
 
+    init_timer();
+
     // Executa threads prontas para serem executadas
     while (!dlist_empty(ready_threads_list) || !dlist_empty(waiting_threads_list))
     {
@@ -69,6 +101,7 @@ void dccthread_init(void (*func)(int), int param) {
             }
         }
 
+    	timer_settime(timer, 0, &time_spent, NULL);
 		swapcontext(&manager_thread_context, &current_ready_thread->context);
         dlist_pop_left(ready_threads_list);
     }
