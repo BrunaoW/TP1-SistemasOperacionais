@@ -39,20 +39,21 @@ static void stop_thread(int sig){
 }
 
 void init_timer() {
-    signal_action.sa_flags = SA_SIGINFO;
-    signal_action.sa_sigaction = stop_thread;
     signal_action.sa_handler = stop_thread;
-	sigaction(SIGUSR1, &signal_action, NULL);
+    sigemptyset(&signal_action.sa_mask);
+    signal_action.sa_flags = 0;
+    sigaction(SIGUSR1, &signal_action, NULL);
 
     signal_event.sigev_notify = SIGEV_SIGNAL;
     signal_event.sigev_signo = SIGUSR1;
-	signal_event.sigev_value.sival_ptr = &timer;
-    timer_create(CLOCK_PROCESS_CPUTIME_ID, &signal_event, &timer);
+    signal_event.sigev_value.sival_ptr = &timer;
 
     time_spent.it_value.tv_sec = 0;
+    time_spent.it_value.tv_nsec = 10000000;
     time_spent.it_interval.tv_sec = 0;
-	time_spent.it_value.tv_nsec = 10000000;
-    time_spent.it_interval.tv_nsec = 10000000;
+    time_spent.it_interval.tv_nsec = 0;
+
+    timer_create(CLOCK_PROCESS_CPUTIME_ID, &signal_event, &timer);
     timer_settime(timer, 0, &time_spent, NULL);
 }
 
@@ -83,11 +84,11 @@ void dccthread_init(void (*func)(int), int param) {
     // Inicializa thread principal
     main_thread = dccthread_create("main", func, param);
 
-    init_timer();
-
     // Executa threads prontas para serem executadas
     while (!dlist_empty(ready_threads_list) || !dlist_empty(waiting_threads_list))
     {
+        init_timer();
+        
         dccthread_t* current_ready_thread = (dccthread_t*) ready_threads_list->head->data;
         dccthread_t* waiting_thread = current_ready_thread->waiting_thread;
         
@@ -103,6 +104,7 @@ void dccthread_init(void (*func)(int), int param) {
 
     	timer_settime(timer, 0, &time_spent, NULL);
 		swapcontext(&manager_thread_context, &current_ready_thread->context);
+        timer_delete(&timer);
         dlist_pop_left(ready_threads_list);
     }
 
