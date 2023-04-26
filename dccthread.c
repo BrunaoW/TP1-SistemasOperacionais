@@ -35,6 +35,13 @@ struct sigaction signal_action;
 struct itimerspec time_spent;
 sigset_t preemption_mask;
 
+// variaveis de suporte a espera
+timer_t sleep_timer;
+struct sigevent sleep_signal_event;
+struct sigaction sleep_signal_action;
+struct itimerspec sleep_time_spent;
+sigset_t sleep_mask;
+
 static void stop_thread(int signal){
 	dccthread_yield();
 }
@@ -87,12 +94,19 @@ void dccthread_init(void (*func)(int), int param) {
     sigaddset(&preemption_mask, SIGUSR1);
 	sigprocmask(SIG_SETMASK, &preemption_mask, NULL);
 
+    sigemptyset(&sleep_mask);
+    sigaddset(&sleep_mask, SIGUSR2);
+
 	manager_thread_context.uc_sigmask = preemption_mask;
     init_timer();
 
     // Executa threads prontas para serem executadas
     while (!dlist_empty(ready_threads_list) || !dlist_empty(waiting_threads_list))
     {
+        // aciona sinal para detectar se há threads aguardando execução
+        sigprocmask(SIG_UNBLOCK, &sleep_mask, NULL);
+		sigprocmask(SIG_BLOCK, &sleep_mask, NULL);
+
 		main_thread = (dccthread_t *) dlist_pop_left(ready_threads_list);
         dccthread_t* waiting_thread = main_thread->waiting_thread;
         
@@ -185,6 +199,38 @@ void dccthread_wait(dccthread_t *tid) {
     sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 }
 
-void dccthread_sleep(struct timespec ts) {
+int cmp_equal(const void *e1, const void *e2, void *userdata){
+	return e1 != e2;
+}
 
+void resume_thread_execution(int sig, siginfo_t *si, void *uc) {
+    dccthread_t* thread_to_resume = (dccthread_t *)si->si_value.sival_ptr;
+    dlist_find_remove(waiting_threads_list, thread_to_resume, cmp_equal, NULL);
+    dlist_push_right(ready_threads_list, thread_to_resume);
+}
+
+void dccthread_sleep(struct timespec ts) {
+	sigprocmask(SIG_BLOCK, &preemption_mask, NULL);
+
+    dccthread_t* current_thread = dccthread_self();
+
+    sleep_signal_action.sa_flags = SA_SIGINFO;
+    sleep_signal_action.sa_sigaction  = resume_thread_execution;
+    sleep_signal_action.sa_mask = preemption_mask;
+    sigaction(SIGUSR2, &sleep_signal_action, NULL);
+
+    sleep_signal_event.sigev_notify = SIGEV_SIGNAL;
+    sleep_signal_event.sigev_value.sival_ptr = current_thread;
+    sleep_signal_event.sigev_signo = SIGUSR2;
+    timer_create(CLOCK_REALTIME, &sleep_signal_event, &sleep_timer);
+
+    sleep_time_spent.it_value = ts;
+    sleep_time_spent.it_interval.tv_nsec = 0;
+    sleep_time_spent.it_interval.tv_sec = 0;
+    timer_settime(sleep_timer, 0, &sleep_time_spent, NULL);
+
+    dlist_push_right(waiting_threads_list, current_thread);
+    swapcontext(&current_thread->context, &manager_thread_context);
+
+    sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 }
