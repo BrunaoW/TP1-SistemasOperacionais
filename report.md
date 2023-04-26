@@ -16,7 +16,7 @@ do grupo no desenvolvimento do trabalho (os valores devem somar
 100%).
 
   * Bruno Wilson <brunowilson4@gmail.com> 50%
-  * Gustavo Augusto <email@domain> 50%
+  * Gustavo Augusto <gustavo.augustoprs@gmail.com> 50%
 
 3. Referências bibliográficas
 
