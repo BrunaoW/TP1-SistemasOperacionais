@@ -28,6 +28,7 @@ do grupo no desenvolvimento do trabalho (os valores devem somar
 
   1. Descreva e justifique as estruturas de dados utilizadas para
      gerência das threads de espaço do usuário (partes 1, 2 e 5).
-
+  Para lidar com a execução, espera, espera e término foi definido duas listas: a ready_threads_list, que armazena as thread prontas para serem executadas. No dccthread_create adiciona novas threads na lista de execução, que são executadas na dccthread_init. Ao serem executadas elas são removidas da ready_threads_list. A outra lista é a waiting_threads_list que armazena as thread que estão em espera, ou seja, para as quais foi chamado um dccthread_sleep.
   2. Descreva o mecanismo utilizado para sincronizar chamadas de
      dccthread_yield e disparos do temporizador (parte 4).
+  Inicialmente é definido um timer que lança um sinal a cada 10ms. Um signal gera uma interrupção, sendo ela do tipo SIGUSR1 você pode definir o signal handler. Desse modo, foi criado a função stop_thread que é responsável por chamar o dccthread_yield.
