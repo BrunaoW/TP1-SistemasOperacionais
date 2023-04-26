@@ -33,28 +33,27 @@ timer_t timer;
 struct sigevent signal_event;
 struct sigaction signal_action;
 struct itimerspec time_spent;
+sigset_t preemption_mask;
 
-static void stop_thread(int sig){
+static void stop_thread(int signal){
 	dccthread_yield();
 }
 
 void init_timer() {
-    signal_action.sa_handler = stop_thread;
-    sigemptyset(&signal_action.sa_mask);
+	signal_action.sa_handler = stop_thread;
     signal_action.sa_flags = 0;
-    sigaction(SIGUSR1, &signal_action, NULL);
+	sigaction(SIGUSR1, &signal_action, NULL);
 
-    signal_event.sigev_notify = SIGEV_SIGNAL;
-    signal_event.sigev_signo = SIGUSR1;
-    signal_event.sigev_value.sival_ptr = &timer;
+	signal_event.sigev_signo = SIGUSR1;
+	signal_event.sigev_notify = SIGEV_SIGNAL;
+	signal_event.sigev_value.sival_ptr = &timer;
+	timer_create(CLOCK_PROCESS_CPUTIME_ID, &signal_event, &timer);
 
-    time_spent.it_value.tv_sec = 0;
-    time_spent.it_value.tv_nsec = 10000000;
+	time_spent.it_value.tv_sec = 0;
     time_spent.it_interval.tv_sec = 0;
-    time_spent.it_interval.tv_nsec = 0;
-
-    timer_create(CLOCK_PROCESS_CPUTIME_ID, &signal_event, &timer);
-    timer_settime(timer, 0, &time_spent, NULL);
+	time_spent.it_value.tv_nsec = 10000000;
+    time_spent.it_interval.tv_nsec = 10000000;
+	timer_settime(timer, 0, &time_spent, NULL);
 }
 
 bool find_thread_in_list(struct dlist* thread_list, dccthread_t* thread) {
@@ -78,40 +77,45 @@ void dccthread_init(void (*func)(int), int param) {
     ready_threads_list = dlist_create();
     waiting_threads_list = dlist_create();
 
+    // Inicializa thread principal
+    dccthread_create("main", func, param);
+    
     // Inicializa thread gerente
     getcontext(&manager_thread_context);
-    
-    // Inicializa thread principal
-    main_thread = dccthread_create("main", func, param);
+
+    sigemptyset(&preemption_mask);
+    sigaddset(&preemption_mask, SIGUSR1);
+	sigprocmask(SIG_SETMASK, &preemption_mask, NULL);
+
+	manager_thread_context.uc_sigmask = preemption_mask;
+    init_timer();
 
     // Executa threads prontas para serem executadas
     while (!dlist_empty(ready_threads_list) || !dlist_empty(waiting_threads_list))
     {
-        init_timer();
-        
-        dccthread_t* current_ready_thread = (dccthread_t*) ready_threads_list->head->data;
-        dccthread_t* waiting_thread = current_ready_thread->waiting_thread;
+		main_thread = (dccthread_t *) dlist_pop_left(ready_threads_list);
+        dccthread_t* waiting_thread = main_thread->waiting_thread;
         
         // verifica se está esperando por uma thread
         if (waiting_thread != NULL) {
-            if (find_thread_in_list(ready_threads_list, waiting_thread)) {
-                dlist_push_right(ready_threads_list, current_ready_thread);
+            if (find_thread_in_list(ready_threads_list, waiting_thread) 
+                || find_thread_in_list(waiting_threads_list, waiting_thread)) {
+                dlist_push_right(ready_threads_list, main_thread);
                 continue;
             } else {
-                current_ready_thread->waiting_thread = NULL;
+                main_thread->waiting_thread = NULL;
             }
         }
 
-    	timer_settime(timer, 0, &time_spent, NULL);
-		swapcontext(&manager_thread_context, &current_ready_thread->context);
-        timer_delete(&timer);
-        dlist_pop_left(ready_threads_list);
+		swapcontext(&manager_thread_context, &main_thread->context);
     }
 
     exit(EXIT_SUCCESS);
 }
 
 dccthread_t* dccthread_create(const char *name, void (*func)(int), int param) {
+    sigprocmask(SIG_BLOCK, &preemption_mask, NULL);
+
     // Inicializa uma nova thread
     dccthread_t* new_thread; 
     new_thread = (dccthread_t*) malloc(sizeof(dccthread_t));
@@ -125,21 +129,27 @@ dccthread_t* dccthread_create(const char *name, void (*func)(int), int param) {
 	new_thread->context.uc_stack.ss_size = THREAD_STACK_SIZE;
 	new_thread->context.uc_stack.ss_flags = 0;
 
-    // adiciona na lista de threads prontas e chama makecontext()
+    // configura, adiciona na lista de threads prontas e chama makecontext()
+    sigemptyset(&new_thread->context.uc_sigmask);
     dlist_push_right(ready_threads_list, new_thread);
 	makecontext(&new_thread->context, (void*) func, 1, param);
+	sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 
     return new_thread;
 }
 
 void dccthread_yield(void) {
+	sigprocmask(SIG_BLOCK, &preemption_mask, NULL);
+
+    // realiza a substituição de contexto pra thread manager
     dccthread_t* current_thread = dccthread_self();
     dlist_push_right(ready_threads_list, current_thread);
     swapcontext(&current_thread->context, &manager_thread_context);
+    sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 }
 
 dccthread_t* dccthread_self(void) {
-    return ready_threads_list->head->data;
+    return main_thread;
 }
 
 const char* dccthread_name(dccthread_t* tid) {
@@ -147,23 +157,32 @@ const char* dccthread_name(dccthread_t* tid) {
 }
 
 void dccthread_exit(void) {
-    // remover thread atual da lista de threads prontas
-    // Setar o contexto da thread manager
+	sigprocmask(SIG_BLOCK, &preemption_mask, NULL);
 
+    // remove thread atual
     dccthread_t* current_thread = dccthread_self();
     free(current_thread);
+
+    // Setar o contexto da thread manager
     setcontext(&manager_thread_context);
+    sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 }
 
 void dccthread_wait(dccthread_t *tid) {
+	sigprocmask(SIG_BLOCK, &preemption_mask, NULL);
+
+    // Trata o caso que a thread já finalizou
+    if (!find_thread_in_list(ready_threads_list, tid) && !find_thread_in_list(waiting_threads_list, tid))
+        return;
+
     // Pega a thread atual
     // Seta a thread a esperar execução na variavel waiting_thread
     // Troca o contexto da thread sendo executada pelo contexto da manager
-
     dccthread_t* current_thread = dccthread_self();
     current_thread->waiting_thread = tid;
     dlist_push_right(ready_threads_list, current_thread);
     swapcontext(&current_thread->context, &manager_thread_context);
+    sigprocmask(SIG_UNBLOCK, &preemption_mask, NULL);
 }
 
 void dccthread_sleep(struct timespec ts) {
