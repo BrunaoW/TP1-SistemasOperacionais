@@ -1,3 +1,13 @@
+/*
+    Trabalho de Sistemas Operacionais 2023/1 - UFMG
+    Professor: Italo Fernando Scota Cunha
+
+    Integrantes: 
+    Bruno Wilson Lopes Dias Portes
+    Gustavo Augusto Pires
+*/
+
+
 #include <ucontext.h>
 #include <stdio.h>
 #include <stdlib.h>
